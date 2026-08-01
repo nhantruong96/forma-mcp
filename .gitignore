@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# uv — NOTE: uv.lock IS committed on purpose so `uv sync` is reproducible.
+.uv/
+
+# Environment / secrets — real APS credentials live here, never in the repo.
+.env
+
+# Local tool settings
+.claude/settings.local.json
+
+# Logs
+*.log
+logs/
+
+# Editor / autosave artifacts
+*.rtd
+*.bak
+*~
+~$*
+
+# .NET (native helper, if ever added)
+native/**/bin/
+native/**/obj/
+
+# Documentation is Markdown only — no PDFs in the repo
+*.pdf
+
+# Excluded from the published repo by request (kept locally)
+tests/
+
+# OS
+Thumbs.db
+.DS_Store

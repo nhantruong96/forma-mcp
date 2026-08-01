@@ -1,0 +1,8 @@
+# Fallback for pip installs. The supported install is `uv sync` (uses uv.lock).
+# Pinned to the 1.x line: mcp 2.0 dropped `mcp.server.fastmcp`, which app.py imports.
+mcp>=1.10.0,<2
+httpx>=0.27.0
+pydantic>=2.7.0
+
+# Optional — only for scripts/gen_acc_naming_template.py
+# openpyxl>=3.1

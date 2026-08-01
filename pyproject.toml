@@ -1,0 +1,28 @@
+[project]
+name = "acc-mcp"
+version = "0.1.0"
+description = "MCP server for Autodesk Construction Cloud (ACC) CDE management per ISO 19650 / TCVN 14177"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Portcoast Engineering Center" }]
+dependencies = [
+    # Pinned to the 1.x line: mcp 2.0 dropped `mcp.server.fastmcp`, which app.py imports.
+    "mcp>=1.10.0,<2",
+    "httpx>=0.27.0",
+    "pydantic>=2.7.0",
+]
+
+# Only needed by scripts/gen_acc_naming_template.py, not by the server itself.
+[project.optional-dependencies]
+templates = ["openpyxl>=3.1"]
+
+[project.scripts]
+acc-mcp = "acc_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/acc_mcp"]

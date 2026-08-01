@@ -1,0 +1,156 @@
+{
+  "name": "ISO 19650 - UK BIM Framework (generic)",
+  "description": "Generic container-ID convention per the UK National Annex to BS EN ISO 19650-2:2018 (2021 revision). Field code tables are project-specific: codes listed here are common defaults; unlisted codes matching the pattern raise a warning, not an error.",
+  "delimiter": "-",
+  "fields": [
+    {
+      "key": "project",
+      "name": "Project",
+      "pattern": "^[A-Z0-9]{2,6}$",
+      "patternHint": "2-6 uppercase alphanumeric characters, fixed in the Project Information Standard",
+      "allowUnlisted": true,
+      "codes": {}
+    },
+    {
+      "key": "originator",
+      "name": "Originator",
+      "pattern": "^[A-Z0-9]{3,6}$",
+      "patternHint": "3-6 characters identifying the organization originating the information",
+      "allowUnlisted": true,
+      "codes": {}
+    },
+    {
+      "key": "volume",
+      "name": "Volume / System",
+      "pattern": "^[A-Z0-9]{2}$",
+      "allowUnlisted": true,
+      "codes": {
+        "ZZ": "All volumes/systems",
+        "XX": "Not applicable"
+      }
+    },
+    {
+      "key": "level",
+      "name": "Level / Location",
+      "pattern": "^[A-Z0-9]{2}$",
+      "allowUnlisted": true,
+      "codes": {
+        "ZZ": "Multiple levels/locations",
+        "XX": "Not applicable",
+        "GF": "Ground floor"
+      }
+    },
+    {
+      "key": "type",
+      "name": "Type (information form)",
+      "allowUnlisted": false,
+      "codes": {
+        "AF": "Animation file",
+        "CM": "Combined model (federated multi-discipline)",
+        "CR": "Clash rendition",
+        "DR": "2D drawing",
+        "M2": "2D model file",
+        "M3": "3D model file",
+        "MR": "Model rendition for other renditions e.g. thermal analysis",
+        "VS": "Visualization",
+        "BQ": "Bill of quantities",
+        "CA": "Calculations",
+        "CO": "Correspondence",
+        "CP": "Cost plan",
+        "DB": "Database",
+        "FN": "File note",
+        "HS": "Health and safety",
+        "IE": "Information exchange file",
+        "MI": "Minutes / action notes",
+        "MS": "Method statement",
+        "PP": "Presentation",
+        "PR": "Programme",
+        "RD": "Room data sheet",
+        "RI": "Request for information",
+        "RP": "Report",
+        "SA": "Schedule of accommodation",
+        "SH": "Schedule",
+        "SN": "Snagging list",
+        "SP": "Specification",
+        "SU": "Survey",
+        "TQ": "Technical query"
+      }
+    },
+    {
+      "key": "role",
+      "name": "Role / Discipline",
+      "allowUnlisted": false,
+      "codes": {
+        "A": "Architect",
+        "B": "Building surveyor",
+        "C": "Civil engineer",
+        "D": "Drainage / highways engineer",
+        "E": "Electrical engineer",
+        "F": "Facilities manager",
+        "G": "Geographical / land surveyor",
+        "H": "Heating and ventilation designer",
+        "I": "Interior designer",
+        "K": "Client",
+        "L": "Landscape architect",
+        "M": "Mechanical engineer",
+        "P": "Public health engineer",
+        "Q": "Quantity surveyor",
+        "S": "Structural engineer",
+        "T": "Town and country planner",
+        "W": "Contractor",
+        "X": "Subcontractor",
+        "Y": "Specialist designer",
+        "Z": "General (non-disciplinary)"
+      }
+    },
+    {
+      "key": "number",
+      "name": "Number",
+      "pattern": "^[0-9]{4,6}$",
+      "patternHint": "Sequential number, 4-6 digits"
+    }
+  ],
+  "statusSuffix": {
+    "enabled": true,
+    "note": "Optional suffix -<Status>-<Revision> when exported outside the CDE, e.g. ...-0001-S3-P01",
+    "statusPattern": "^(S[0-7]|A[0-9]{1,2}|B[0-9]{1,2}|CR)$",
+    "revisionPattern": "^(P|C)[0-9]{2}(\\.[0-9]{2})?$"
+  },
+  "statusCodes": {
+    "S0": "Initial status - WIP",
+    "S1": "Suitable for coordination",
+    "S2": "Suitable for information",
+    "S3": "Suitable for review and comment",
+    "S4": "Suitable for stage approval",
+    "S6": "Suitable for PIM authorization",
+    "S7": "Suitable for AIM authorization",
+    "A1": "Authorized and accepted (A1..An)",
+    "B1": "Partial sign-off, with comments (B1..Bn)",
+    "CR": "As-constructed record"
+  },
+  "revisionCodes": {
+    "P01": "Preliminary revision P01, P02... (P01.01 for intermediate)",
+    "C01": "Contractual revision after acceptance C01, C02..."
+  },
+  "classification": {
+    "system": "Uniclass 2015",
+    "note": "Use Uniclass 2015 tables (PM for project management, EF/Ss/Pr for built assets)"
+  },
+  "cdeStates": ["WIP", "Shared", "Published", "Archive"],
+  "cdeStructure": {
+    "01-WIP": {
+      "01. Architecture": {},
+      "02. Structure": {},
+      "03. MEP": {},
+      "04. Civil": {},
+      "05. Coordination": {}
+    },
+    "02-SHARED": {
+      "01. Models": {},
+      "02. Drawings": {},
+      "03. Documents": {}
+    },
+    "03-PUBLISHED": {},
+    "04-ARCHIVED": {}
+  }
+}
