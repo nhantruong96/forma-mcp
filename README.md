@@ -56,8 +56,8 @@ Required for every hub you want to reach, including in 3-legged mode.
 ### 1.3 Clone and install
 
 ```powershell
-git clone https://github.com/nhantruong96/acc-mcp.git C:\path\to\acc-mcp
-cd C:\path\to\acc-mcp
+git clone https://github.com/nhantruong96/acc-mcp.git
+cd acc-mcp
 uv sync
 uv run python -m acc_mcp --selfcheck
 ```
