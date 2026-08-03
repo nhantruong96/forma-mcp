@@ -192,8 +192,26 @@ async def acc_rename_folder(
     project_id: Annotated[str, Field(description="Project id")],
     folder_id: Annotated[str, Field(description="Folder URN")],
     new_name: Annotated[str, Field(min_length=1, max_length=255)],
+    confirmed_by_user: Annotated[bool, Field(description=(
+        "Must be true. Rename only when the user has specifically asked for this folder "
+        "to be renamed."
+    ))] = False,
 ) -> str:
-    """Rename a folder (contents and permissions unaffected)."""
+    """Rename a folder (contents and permissions unaffected).
+
+    KNOWN ACC LIMITATION — verified: this PATCH updates the folder's internal
+    'name' but NOT the 'displayName' that ACC Docs (and this server's folder
+    listings) show, so the new name will not appear in the UI. Renaming a folder
+    reliably has to be done by the user in the ACC Docs UI. Never emulate a
+    rename by deleting and re-creating the folder — deleting is not allowed on a
+    CDE. Rename only on the user's specific request."""
+    if not confirmed_by_user:
+        return (
+            "Refused by the default CDE working rules: rename only when the user has "
+            "specifically asked for it. Also note that folder renaming does not work "
+            "through the ACC API (displayName is unchanged) — ask the user to rename the "
+            "folder in the ACC Docs UI."
+        )
     try:
         payload = await request(
             "PATCH",
@@ -205,7 +223,14 @@ async def acc_rename_folder(
             content_type="application/vnd.api+json",
             impersonate_header="x-user-id",
         )
-        return ok(fmt_folder(payload.get("data", {})))
+        return ok(
+            fmt_folder(payload.get("data", {})),
+            note=(
+                "WARNING: ACC Docs keeps showing the previous folder name (displayName is "
+                "not updated by the API). Ask the user to rename the folder in the ACC "
+                "Docs UI if the new name has to be visible."
+            ),
+        )
     except Exception as exc:
         return tool_error(exc)
 
@@ -231,9 +256,26 @@ async def _set_hidden(project_id: str, folder_id: str, hidden: bool) -> dict[str
 async def acc_delete_folder(
     project_id: Annotated[str, Field(description="Project id")],
     folder_id: Annotated[str, Field(description="Folder URN")],
+    confirmed_by_user: Annotated[bool, Field(description=(
+        "Must be true. Set it ONLY after the user has explicitly asked for this folder "
+        "to be deleted — deleting is against the default CDE working rules."
+    ))] = False,
 ) -> str:
-    """Delete a folder in ACC Docs (soft delete — the folder is hidden and can
-    be restored with acc_restore_folder). Confirm with the user first."""
+    """Delete a folder in ACC Docs (soft delete — hidden, restorable with
+    acc_restore_folder).
+
+    AGAINST THE DEFAULT CDE RULES: nothing is deleted on a CDE. Do not use this
+    to 'clean up' or to work around the fact that folders cannot be renamed
+    through the API — ask the user to rename the folder in the ACC Docs UI
+    instead. Requires confirmed_by_user=true."""
+    if not confirmed_by_user:
+        return (
+            "Refused by the default CDE working rules: folders are never deleted on a "
+            "CDE (superseded content is moved to the Archived area). If the user has "
+            "explicitly asked for this deletion, call again with confirmed_by_user=true. "
+            "To rename a folder, ask the user to do it in the ACC Docs UI — the API "
+            "cannot change a folder's display name."
+        )
     try:
         folder = await _set_hidden(project_id, folder_id, True)
         return ok(folder, note="Soft-deleted (hidden). Restore with acc_restore_folder.")

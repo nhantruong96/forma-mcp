@@ -4,6 +4,7 @@ MCP server that lets Claude manage an ISO 19650 / TCVN 14177 Common Data Environ
 
 ## Contents
 
+- [CDE working rules](#cde-working-rules)
 - [Requirements](#requirements)
 - [Step 1 — Install](#step-1--install)
 - [Step 2 — Register with Claude Desktop](#step-2--register-with-claude-desktop)
@@ -15,6 +16,37 @@ MCP server that lets Claude manage an ISO 19650 / TCVN 14177 Common Data Environ
 - [Troubleshooting](#troubleshooting)
 - [Repository layout](#repository-layout)
 - [License](#license)
+
+## CDE working rules
+
+These rules are built into the server (they are part of the MCP `instructions`, and the
+destructive tools refuse to run without an explicit `confirmed_by_user=true`). They apply
+to every action on the CDE unless the user says otherwise.
+Các nguyên tắc này đã được nhúng vào server và áp dụng mặc định cho mọi thao tác trên CDE.
+
+1. **Never delete a file or a folder.** Nothing is removed from a CDE — superseded
+   containers are moved to the Archived area. `acc_delete_folder` refuses unless the user
+   explicitly asked for the deletion.
+   *Không bao giờ xóa file hay thư mục.*
+2. **Files are only overwritten.** Upload with the **same name** so ACC adds a new version
+   and the lineage is preserved. Uploading under a different name creates a separate
+   document and orphans its history.
+   *File chỉ được ghi đè (upload cùng tên = version mới).*
+3. **Rename only on a specific request** — for both files and folders. A file name is the
+   information-container ID and normally never changes. Use `acc_rename_file` (renames in
+   place, keeps the history); never re-upload under a new name.
+   *Chỉ đổi tên khi được yêu cầu cụ thể.*
+   Folder renaming does **not** work through the ACC API (the API updates the internal
+   `name` but not the `displayName` shown in ACC Docs) — ask the user to rename the folder
+   in the ACC Docs UI, and never emulate it by deleting and re-creating the folder.
+4. **Change document state through metadata, not through the name**: Status (suitability),
+   Revision, Classification, Description — `acc_set_custom_attributes`. Status / Revision /
+   Classification are native ACC attributes of the file naming standard; create a custom
+   attribute only where ACC has no equivalent.
+   *Đổi trạng thái tài liệu bằng metadata, không đổi tên file.*
+5. **Only issued/shared containers belong on the CDE.** Keep work in progress (P0x.0y)
+   outside it until it is actually shared.
+   *Chỉ đưa lên CDE bản đã thực sự chia sẻ/phát hành.*
 
 ## Requirements
 
@@ -234,7 +266,7 @@ uv run acc-mcp --list-tools
 | Members | `acc_list_project_users`, `acc_add_project_user`, `acc_update_project_user`, `acc_remove_project_user`, `acc_import_project_users`, `acc_list_companies` |
 | CDE folders | `acc_get_top_folders`, `acc_list_folder`, `acc_create_folder`, `acc_create_folder_structure`, `acc_rename_folder`, `acc_move_folder`, `acc_delete_folder`, `acc_restore_folder`, `acc_search_folder` |
 | Permissions | `acc_get_folder_permissions`, `acc_set_folder_permissions`, `acc_remove_folder_permissions` |
-| Files | `acc_get_item`, `acc_list_item_versions`, `acc_upload_file`, `acc_download_file`, `acc_copy_file` |
+| Files | `acc_get_item`, `acc_list_item_versions`, `acc_upload_file`, `acc_rename_file`, `acc_download_file`, `acc_copy_file` |
 | Status & metadata | `acc_list_custom_attributes`, `acc_create_custom_attribute`, `acc_get_docs_metadata`, `acc_set_custom_attributes`, `acc_get_naming_standard` |
 | ISO 19650 naming | `acc_naming_configs`, `acc_validate_names`, `acc_compose_name`, `acc_audit_folder_naming`, `acc_cde_structure_template` |
 | Reviews | `acc_list_review_workflows`, `acc_list_reviews`, `acc_get_review`, `acc_create_review` |

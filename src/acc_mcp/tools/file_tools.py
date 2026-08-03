@@ -137,13 +137,25 @@ async def acc_upload_file(
     project_id: Annotated[str, Field(description="Project id")],
     folder_id: Annotated[str, Field(description="Destination folder URN")],
     local_path: Annotated[str, Field(description="Path of the file on this computer, e.g. 'C:/Projects/ABC/model.rvt'")],
-    name: Annotated[Optional[str], Field(description="Name in ACC (defaults to the local file name)")] = None,
+    name: Annotated[Optional[str], Field(description=(
+        "Name in ACC (defaults to the local file name). Use this ONLY to keep the CDE "
+        "name unchanged when the local file is named differently — never to give an "
+        "existing document a new name (that creates a separate item and loses its "
+        "version history; use acc_rename_file instead)."
+    ))] = None,
 ) -> str:
     """Upload a local file to an ACC Docs folder. If a file with the same name
-    already exists there, a NEW VERSION is added (correct CDE behaviour);
-    otherwise a new document is created. Tip: validate the name against the
-    project naming convention first (acc_validate_names). Uses chunked S3
-    upload, so large models are fine."""
+    already exists there, a NEW VERSION is added — this is the ONLY correct way
+    to update a document on a CDE (lineage and audit trail are preserved).
+    Uploading under a different name creates a SEPARATE document and orphans the
+    version history: never do that to 'replace' or 'rename' something.
+    Tip: validate the name against the project naming convention first
+    (acc_validate_names). Uses chunked S3 upload, so large models are fine.
+
+    Reminder: only issued/shared containers belong on the CDE; keep work in
+    progress outside it. After uploading a new version, stamp the metadata with
+    acc_set_custom_attributes (Status / Revision / Classification / Description)
+    — the file name itself stays the same."""
     try:
         path = Path(local_path).expanduser()
         if not path.is_file():
@@ -254,6 +266,52 @@ async def _resolve_storage(project_id: str, item_id: Optional[str], version_id: 
             "extracted document)."
         )
     return storage, name
+
+
+@mcp.tool(
+    name="acc_rename_file",
+    annotations={"title": "ACC: Rename file", "readOnlyHint": False},
+)
+async def acc_rename_file(
+    project_id: Annotated[str, Field(description="Project id")],
+    version_id: Annotated[str, Field(description="Version URN of the document (usually the tip version)")],
+    new_name: Annotated[str, Field(min_length=1, max_length=255, description="New file name, including the extension")],
+    confirmed_by_user: Annotated[bool, Field(description=(
+        "Must be true. Rename only when the user has specifically asked for this file to "
+        "be renamed — on a CDE a file name is the information-container ID and normally "
+        "never changes."
+    ))] = False,
+) -> str:
+    """Rename a document IN PLACE, keeping its item, version number and full
+    history (PATCH on the version's name — the only method that works on ACC;
+    PATCH on the item's displayName is rejected with BAD_INPUT).
+
+    Use this instead of re-uploading under a different name: a new upload would
+    create a separate document and orphan the version history. On a CDE the
+    name carries the container ID only — status, revision, classification and
+    description live in the metadata (acc_set_custom_attributes)."""
+    if not confirmed_by_user:
+        return (
+            "Refused by the default CDE working rules: file names are information-container "
+            "IDs and are not changed on our own initiative. Call again with "
+            "confirmed_by_user=true only if the user specifically asked for this rename. "
+            "To change status/revision/classification/description use "
+            "acc_set_custom_attributes instead."
+        )
+    try:
+        payload = await request(
+            "PATCH",
+            f"{config.DATA_V1}/projects/{with_b(project_id)}/versions/{enc(version_id)}",
+            json_body={
+                "jsonapi": {"version": "1.0"},
+                "data": {"type": "versions", "id": version_id, "attributes": {"name": new_name}},
+            },
+            content_type="application/vnd.api+json",
+            impersonate_header="x-user-id",
+        )
+        return ok(fmt_version(payload.get("data", {})))
+    except Exception as exc:
+        return tool_error(exc)
 
 
 @mcp.tool(

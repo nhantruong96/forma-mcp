@@ -62,9 +62,15 @@ async def acc_create_custom_attribute(
     attr_type: Annotated[str, Field(description="string | date | array (array = drop-down list)")] = "string",
     array_values: Annotated[Optional[str], Field(description="For type 'array': comma-separated allowed values, e.g. 'S0,S1,S2,S3,S4,A1,B1,CR'")] = None,
 ) -> str:
-    """Create a custom attribute definition on a folder — the way to add ISO
-    19650 metadata fields (Status/Suitability, Revision, Uniclass code...) when
-    the ACC file-naming standard is not used or extra fields are needed."""
+    """Create a custom attribute definition on a folder.
+
+    Use it ONLY when ACC has no equivalent field. Status / Revision /
+    Classification already exist natively as the related attributes of the ACC
+    file naming standard (see acc_get_naming_standard) — creating custom copies
+    of them produces duplicated, competing metadata. A free-text document
+    description is the usual legitimate case, since ACC has no editable
+    description/title field. Definitions cannot be deleted through the API, only
+    in the ACC UI, so check acc_list_custom_attributes first."""
     try:
         body: dict[str, Any] = {"name": attr_name, "type": attr_type}
         if attr_type == "array":
@@ -147,7 +153,11 @@ async def acc_set_custom_attributes(
     """Set custom attribute values on a document version — e.g. move a
     container from S2 to S3, stamp the Revision, or fill the Uniclass
     classification. Attribute names are resolved against the folder's
-    definitions; unknown names are reported with the available ones."""
+    definitions; unknown names are reported with the available ones.
+
+    This is the correct way to change the state of a document on a CDE: the file
+    name stays unchanged (it is the information-container ID) and only the
+    metadata moves."""
     try:
         values = json.loads(values_json)
         if not isinstance(values, dict) or not values:
