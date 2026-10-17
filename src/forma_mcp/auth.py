@@ -6,7 +6,13 @@ Design notes
 * 3-legged (authorization_code + PKCE, confidential client): a temporary local
   HTTP server captures the redirect on the port of APS_CALLBACK_URL. The refresh
   token ROTATES on every use (single-use), so the new one is persisted
-  immediately and refreshes are serialized behind an asyncio lock.
+  immediately.
+* Several server processes (one per Claude session) share the token file, so a
+  refresh re-reads the file and runs under an exclusive file lock: only one
+  process redeems the refresh token, the others pick up its result. Writes merge
+  into the file and replace it atomically.
+* The refresh request sends no scope: APS then re-issues exactly the scopes
+  granted at login (asking for 'openid' again is rejected as invalid_scope).
 * Everything is stored in ~/.forma-mcp/tokens.json (0600 where supported).
 """
 
@@ -16,6 +22,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import os
 import secrets
 import threading
 import time
@@ -39,6 +46,77 @@ def _now() -> float:
 
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
+
+
+class _FileLock:
+    """Exclusive lock on <token file>.lock, shared by every server process."""
+
+    TIMEOUT = 90.0  # a holder makes at most one token request (30 s HTTP timeout)
+
+    def __init__(self) -> None:
+        self._fh: Any = None
+
+    def _try(self) -> bool:
+        if self._fh is None:
+            config.TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+            self._fh = open(config.TOKEN_FILE.with_name(config.TOKEN_FILE.name + ".lock"), "a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                self._fh.seek(0)
+                msvcrt.locking(self._fh.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(self._fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            return False
+
+    def _timeout(self) -> AuthError:
+        self.release()
+        return AuthError("The token file is locked by another forma-mcp process; retry shortly.")
+
+    def __enter__(self) -> "_FileLock":
+        deadline = _now() + self.TIMEOUT
+        while not self._try():
+            if _now() > deadline:
+                raise self._timeout()
+            time.sleep(0.1)
+        return self
+
+    async def __aenter__(self) -> "_FileLock":
+        deadline = _now() + self.TIMEOUT
+        while not self._try():
+            if _now() > deadline:
+                raise self._timeout()
+            await asyncio.sleep(0.1)
+        return self
+
+    def release(self) -> None:
+        fh, self._fh = self._fh, None
+        if fh is None:
+            return
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fh, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        fh.close()
+
+    def __exit__(self, *exc: Any) -> None:
+        self.release()
+
+    async def __aexit__(self, *exc: Any) -> None:
+        self.release()
 
 
 class _CallbackState:
@@ -92,20 +170,58 @@ class TokenManager:
         self._load()
 
     # ------------------------------------------------------------------ store
-    def _load(self) -> None:
-        try:
-            if config.TOKEN_FILE.is_file():
-                self._store = json.loads(config.TOKEN_FILE.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            self._store = {}
+    @staticmethod
+    def _read_file() -> dict[str, Any]:
+        """Current content of the token file ({} if absent). Raises OSError/ValueError
+        only if it stays unreadable (Windows briefly denies access during a replace)."""
+        for attempt in range(50):
+            try:
+                if not config.TOKEN_FILE.is_file():
+                    return {}
+                return json.loads(config.TOKEN_FILE.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                if attempt == 49:
+                    raise
+                time.sleep(0.05)
+        return {}
 
-    def _save(self) -> None:
-        config.TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        config.TOKEN_FILE.write_text(json.dumps(self._store, indent=2), encoding="utf-8")
+    def _load(self) -> None:
+        """Re-read the token file; keep the in-memory copy if it cannot be read."""
         try:
-            config.TOKEN_FILE.chmod(0o600)
+            self._store = self._read_file()
+        except (OSError, ValueError):
+            pass
+
+    def _save(self, *keys: str) -> None:
+        """Write `keys` of the in-memory store into the token file, keeping what other
+        processes wrote under the other keys."""
+        with _FileLock():
+            self._write(keys)
+
+    def _write(self, keys: tuple[str, ...]) -> None:
+        """Merge `keys` into the file and replace it atomically; caller holds the lock."""
+        mine = {k: self._store.get(k) for k in keys}
+        self._store = self._read_file()
+        for k, v in mine.items():
+            if v is None:
+                self._store.pop(k, None)
+            else:
+                self._store[k] = v
+        path = config.TOKEN_FILE
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(self._store, indent=2), encoding="utf-8")
+        try:
+            tmp.chmod(0o600)
         except OSError:
             pass
+        for attempt in range(50):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:  # Windows: a reader holds the file for a moment
+                if attempt == 49:
+                    raise
+                time.sleep(0.05)
 
     # ------------------------------------------------------------- validation
     @staticmethod
@@ -156,7 +272,7 @@ class TokenManager:
                 "access_token": data["access_token"],
                 "expires_at": _now() + int(data.get("expires_in", 3600)),
             }
-            self._save()
+            self._save("two_legged")
             return data["access_token"]
 
     # ------------------------------------------------------------- 3-legged
@@ -263,7 +379,7 @@ class TokenManager:
         self._store_3lo(data)
         user = await self._fetch_userinfo(data["access_token"])
         self._store["three_legged"]["user"] = user
-        self._save()
+        self._save("three_legged")
         return user
 
     def _store_3lo(self, data: dict[str, Any]) -> None:
@@ -275,7 +391,6 @@ class TokenManager:
             "obtained_at": _now(),
             "user": prev.get("user"),
         }
-        self._save()
 
     async def _fetch_userinfo(self, access_token: str) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -291,37 +406,56 @@ class TokenManager:
             "email": info.get("email"),
         }
 
-    async def get_3lo_token(self) -> str:
+    def _valid_3lo(self) -> Optional[str]:
         tok = self._store.get("three_legged") or {}
-        if not tok.get("refresh_token") and not tok.get("access_token"):
-            raise AuthError("Not logged in. Call acc_login to sign in with your Autodesk account.")
         if tok.get("access_token") and tok.get("expires_at", 0) > _now() + 60:
             return tok["access_token"]
-        async with self._refresh_lock:
-            tok = self._store.get("three_legged") or {}
-            if tok.get("access_token") and tok.get("expires_at", 0) > _now() + 60:
-                return tok["access_token"]
-            if not tok.get("refresh_token"):
-                raise AuthError("Session expired and no refresh token stored. Call acc_login.")
-            try:
-                data = await self._token_request(
-                    {
-                        "grant_type": "refresh_token",
-                        "refresh_token": tok["refresh_token"],
-                        "scope": config.SCOPES_3LO,
-                    }
-                )
-            except AuthError as exc:
-                if "invalid_grant" in str(exc).lower():
-                    self._store.pop("three_legged", None)
-                    self._save()
+        return None
+
+    async def get_3lo_token(self) -> str:
+        if token := self._valid_3lo():
+            return token
+        self._load()  # another process may have refreshed or logged in meanwhile
+        if token := self._valid_3lo():
+            return token
+        async with self._refresh_lock, _FileLock():
+            self._load()
+            for attempt in range(2):
+                if token := self._valid_3lo():
+                    return token
+                rt = (self._store.get("three_legged") or {}).get("refresh_token")
+                if not rt:
+                    raise AuthError(
+                        "Not logged in, or the session expired. Call acc_login to sign in "
+                        "with your Autodesk account."
+                    )
+                try:
+                    # No scope: APS re-issues the scopes granted at login.
+                    data = await self._token_request(
+                        {"grant_type": "refresh_token", "refresh_token": rt}
+                    )
+                except AuthError as exc:
+                    if "invalid_grant" not in str(exc).lower():
+                        raise
+                    # Rejected: maybe already rotated by a process that wrote the file
+                    # without this lock (older server version). Re-read before giving up.
+                    self._load()
+                    if token := self._valid_3lo():
+                        return token
+                    current = (self._store.get("three_legged") or {}).get("refresh_token")
+                    if current and current != rt and attempt == 0:
+                        continue
+                    if current == rt:
+                        self._store.pop("three_legged", None)
+                        self._write(("three_legged",))
                     raise AuthError(
                         "The refresh token is no longer valid (expired after ~15 days of no use, "
-                        "or used concurrently). Call acc_login to sign in again."
+                        "or revoked). Call acc_login to sign in again."
                     ) from exc
-                raise
-            self._store_3lo(data)
-            return data["access_token"]
+                self._store_3lo(data)
+                self._write(("three_legged",))
+                return data["access_token"]
+            raise AuthError("The session could not be refreshed. Call acc_login to sign in again.")
 
     # ------------------------------------------------------------- shared
     async def _token_request(self, body: dict[str, str]) -> dict[str, Any]:
@@ -356,7 +490,7 @@ class TokenManager:
     def logout(self) -> None:
         self.login_cancel()
         self._store.pop("three_legged", None)
-        self._save()
+        self._save("three_legged")
 
     @property
     def user(self) -> Optional[dict[str, Any]]:
@@ -373,6 +507,7 @@ class TokenManager:
         return bool(tok.get("refresh_token") or tok.get("access_token"))
 
     def status(self) -> dict[str, Any]:
+        self._load()  # report what the shared file holds, not this process's copy
         t3 = self._store.get("three_legged") or {}
         t2 = self._store.get("two_legged") or {}
         return {
@@ -383,7 +518,11 @@ class TokenManager:
             "three_legged": {
                 "logged_in": self.has_3lo(),
                 "user": t3.get("user"),
-                "access_token_valid_for_s": max(0, int(t3.get("expires_at", 0) - _now())) or None,
+                "access_token_valid_for_s": (
+                    max(0, int(t3["expires_at"] - _now())) if t3.get("access_token") else None
+                ),
+                # True: an expired access token is renewed on the next call, no login needed.
+                "auto_refresh": bool(t3.get("refresh_token")),
             },
             "two_legged": {
                 "token_cached": bool(t2.get("access_token")),
