@@ -7,8 +7,10 @@ deliberately not exposed here.
 from __future__ import annotations
 
 import asyncio
+import json
+import time
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Optional, Union
 
 import httpx
 from pydantic import Field
@@ -18,9 +20,15 @@ from ..http import APSError, ok, request, tool_error
 from ..ids import without_b
 from .. import config
 
-# Content list per hub, kept for the life of the server process (a full company
-# library can be tens of thousands of items; the API has no name search).
-_content_cache: dict[str, list[dict[str, Any]]] = {}
+# Content list per hub. A company library can be tens of thousands of items and the
+# API has no name search, so the list is read page by page across calls (each call
+# stops before the MCP host's request timeout) and saved to disk once complete.
+_LIST_BUDGET_S = 30
+_state: dict[str, dict[str, Any]] = {}  # hub -> {"items": [...], "cursor": str|None, "done": bool}
+
+
+def _cache_file(hub: str) -> Path:
+    return config.DATA_DIR / "catalog" / f"{hub}.json"
 
 
 def _hub(hub_id: str) -> str:
@@ -47,13 +55,22 @@ def _fmt_content(c: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _all_contents(hub_id: str, region: Optional[str], refresh: bool) -> list[dict[str, Any]]:
+async def _read_contents(hub_id: str, region: Optional[str], refresh: bool) -> dict[str, Any]:
+    """Advance the hub's content list for up to _LIST_BUDGET_S seconds; return its state."""
     key = _hub(hub_id)
-    if key in _content_cache and not refresh:
-        return _content_cache[key]
-    items: list[dict[str, Any]] = []
-    params: dict[str, Any] = {"limit": 1000}
-    while True:
+    st = _state.get(key)
+    if st is None or refresh:
+        f = _cache_file(key)
+        if f.is_file() and not refresh:
+            st = {"items": json.loads(f.read_text(encoding="utf-8")), "cursor": None, "done": True}
+        else:
+            st = {"items": [], "cursor": None, "done": False}
+        _state[key] = st
+    start = time.monotonic()
+    while not st["done"] and time.monotonic() - start < _LIST_BUDGET_S:
+        params: dict[str, Any] = {"limit": 1000}
+        if st["cursor"]:
+            params["cursorState"] = st["cursor"]
         for attempt in range(4):
             try:
                 page = await request("GET", f"{_base(hub_id)}/contents", params=params, auth="3lo", region=region)
@@ -62,13 +79,14 @@ async def _all_contents(hub_id: str, region: Optional[str], refresh: bool) -> li
                 if attempt == 3:
                     raise
                 await asyncio.sleep(2 ** attempt)
-        items.extend(page.get("results") or [])
-        cursor = (page.get("pagination") or {}).get("nextCursorState")
-        if not cursor:
-            break
-        params = {"limit": 1000, "cursorState": cursor}
-    _content_cache[key] = items
-    return items
+        st["items"].extend(page.get("results") or [])
+        st["cursor"] = (page.get("pagination") or {}).get("nextCursorState")
+        if not st["cursor"]:
+            st["done"] = True
+            f = _cache_file(key)
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(json.dumps(st["items"], ensure_ascii=False), encoding="utf-8")
+    return st
 
 
 @mcp.tool(
@@ -121,14 +139,16 @@ async def catalog_search_content(
     content_type: Annotated[Optional[str], Field(description="RFA, RVT, DWG, ... (case-insensitive)")] = None,
     collection_id: Annotated[Optional[str], Field(description="Only items in this collection")] = None,
     max_results: Annotated[int, Field(description="Maximum items returned", ge=1, le=500)] = 50,
-    refresh: Annotated[bool, Field(description="Re-read the whole library instead of using this session's cached list")] = False,
+    refresh: Annotated[bool, Field(description="Re-read the whole library instead of using the saved list")] = False,
     region: Annotated[Optional[str], Field(description="Region header (default US)")] = None,
 ) -> str:
     """Find items in the Content Catalog by file name, type or collection. The API
-    has no name search, so the first call reads the whole library (about one page
-    per 1 000 items) and later calls filter the cached list."""
+    has no name search, so the library list is read once (1 000 items per page,
+    about 30 s per call) and saved under the data dir; while "complete" is false,
+    call again with the same arguments to continue reading."""
     try:
-        items = await _all_contents(hub_id, region, refresh)
+        st = await _read_contents(hub_id, region, refresh)
+        items = st["items"]
         words = (name_contains or "").lower().split()
         hits = [
             c for c in items
@@ -136,7 +156,8 @@ async def catalog_search_content(
             and (not content_type or (c.get("contentType") or "").upper() == content_type.upper())
             and (not collection_id or collection_id in (c.get("collectionIds") or []))
         ]
-        return ok([_fmt_content(c) for c in hits[:max_results]], matched=len(hits), libraryTotal=len(items))
+        return ok([_fmt_content(c) for c in hits[:max_results]], matched=len(hits),
+                  itemsRead=len(items), complete=st["done"])
     except Exception as exc:
         return tool_error(exc)
 
@@ -172,7 +193,7 @@ async def catalog_get_content(
 async def catalog_download_content(
     hub_id: Annotated[str, Field(description="Hub id (with or without 'b.')")],
     content_id: Annotated[str, Field(description="Content id (from catalog_search_content)")],
-    product_version: Annotated[Optional[str], Field(description="Product version of the representation, e.g. '2027' (default: newest)")] = None,
+    product_version: Annotated[Optional[Union[str, int]], Field(description="Product version of the representation, e.g. '2027' (default: newest)")] = None,
     dest_path: Annotated[Optional[str], Field(description="Destination file or folder on this computer (default: <data dir>/downloads)")] = None,
     region: Annotated[Optional[str], Field(description="Region header (default US)")] = None,
 ) -> str:
@@ -189,7 +210,7 @@ async def catalog_download_content(
         if product_version:
             reps = [r for r in reps if str(r.get("productVersion")) == str(product_version)]
         if not reps:
-            raise APSError(f"No representation{' for version ' + product_version if product_version else ''}.")
+            raise APSError(f"No representation{f' for version {product_version}' if product_version else ''}.")
         rep = max(reps, key=lambda r: str(r.get("productVersion") or ""))
         signed = await request("POST", f"{base}/{rep['id']}:get-download-url", params={"type": "CONTENT"},
                                auth="3lo", region=region)
