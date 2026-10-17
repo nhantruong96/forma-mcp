@@ -322,7 +322,7 @@ async def acc_download_file(
     project_id: Annotated[str, Field(description="Project id")],
     item_id: Annotated[Optional[str], Field(description="Item URN — downloads its current (tip) version")] = None,
     version_id: Annotated[Optional[str], Field(description="Specific version URN (use instead of item_id for older versions)")] = None,
-    dest_path: Annotated[Optional[str], Field(description="Destination file or folder on this computer (default: ~/.acc-mcp/downloads)")] = None,
+    dest_path: Annotated[Optional[str], Field(description="Destination file or folder on this computer (default: ~/.forma-mcp/downloads)")] = None,
     link_only: Annotated[bool, Field(description="True = return a temporary signed download URL instead of saving the file")] = False,
 ) -> str:
     """Download a document from ACC Docs to the local disk (or get a temporary

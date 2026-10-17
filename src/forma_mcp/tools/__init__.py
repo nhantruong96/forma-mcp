@@ -4,6 +4,7 @@ from . import (  # noqa: F401
     admin_tools,
     attribute_tools,
     auth_tools,
+    catalog_tools,
     file_tools,
     folder_tools,
     naming_tools,

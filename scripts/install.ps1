@@ -1,4 +1,4 @@
-# Install ACC MCP. Prefers `uv sync`; falls back to venv + pip only when uv is missing.
+# Install Forma MCP. Prefers `uv sync`; falls back to venv + pip only when uv is missing.
 #   powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -Templates
 
@@ -29,8 +29,8 @@ if (-not (Test-Path '.env')) {
 }
 
 Write-Host '==> selfcheck' -ForegroundColor Cyan
-& $python -m acc_mcp --selfcheck
+& $python -m forma_mcp --selfcheck
 
 Write-Host ''
 Write-Host "Claude Desktop command: $python" -ForegroundColor Green
-Write-Host 'Claude Desktop args:    ["-m", "acc_mcp"]' -ForegroundColor Green
+Write-Host 'Claude Desktop args:    ["-m", "forma_mcp"]' -ForegroundColor Green

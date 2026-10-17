@@ -7,7 +7,7 @@ Design notes
   HTTP server captures the redirect on the port of APS_CALLBACK_URL. The refresh
   token ROTATES on every use (single-use), so the new one is persisted
   immediately and refreshes are serialized behind an asyncio lock.
-* Everything is stored in ~/.acc-mcp/tokens.json (0600 where supported).
+* Everything is stored in ~/.forma-mcp/tokens.json (0600 where supported).
 """
 
 from __future__ import annotations

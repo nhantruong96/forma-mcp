@@ -1,4 +1,4 @@
-"""Entry point: run the ACC MCP server over stdio (for Claude Desktop / Code)."""
+"""Entry point: run the Forma MCP server over stdio (for Claude Desktop / Code)."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def _selfcheck() -> int:
         except Exception as exc:  # noqa: BLE001 - report, don't crash
             problems.append(f"naming config {cid!r} failed to load: {exc}")
 
-    print(f"acc-mcp {__version__}")
+    print(f"forma-mcp {__version__}")
     print(f"python           {sys.version.split()[0]}")
     print(f"tools registered {len(tool_names)}")
     print(f"naming configs   {len(config_ids)} ({', '.join(config_ids) or 'none'})")
@@ -54,7 +54,7 @@ def main() -> None:
     if "--version" in sys.argv:
         from . import __version__
 
-        print(f"acc-mcp {__version__}")
+        print(f"forma-mcp {__version__}")
         return
     if "--selfcheck" in sys.argv:
         raise SystemExit(_selfcheck())

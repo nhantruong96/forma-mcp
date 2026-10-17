@@ -11,7 +11,7 @@ import httpx
 from . import config
 from .auth import TOKENS, AuthError
 
-USER_AGENT = "acc-mcp/0.1 (Portcoast CDE assistant)"
+USER_AGENT = "forma-mcp/0.1 (Portcoast CDE assistant)"
 
 
 class APSError(Exception):

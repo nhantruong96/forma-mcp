@@ -7,11 +7,22 @@ from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # .env loading (tiny, dependency-free). Search order:
-#   1. $ACC_MCP_ENV_FILE   2. <package repo root>/.env   3. ~/.acc-mcp/.env
+#   1. $FORMA_MCP_ENV_FILE   2. <package repo root>/.env   3. <home dir>/.env
 # Real environment variables always win over .env entries.
 # ---------------------------------------------------------------------------
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]  # repo root (contains pyproject.toml)
+
+# Renamed from acc-mcp: an existing ~/.acc-mcp (token, naming configs) keeps being used
+# until ~/.forma-mcp exists, and ACC_MCP_* variables are still read as a fallback.
+_HOME_DIR = Path.home() / ".forma-mcp"
+if not _HOME_DIR.exists() and (Path.home() / ".acc-mcp").exists():
+    _HOME_DIR = Path.home() / ".acc-mcp"
+
+
+def _env(name: str, default: str = "") -> str:
+    """FORMA_MCP_<name>, else the pre-rename ACC_MCP_<name>, else default."""
+    return os.environ.get(f"FORMA_MCP_{name}") or os.environ.get(f"ACC_MCP_{name}") or default
 
 
 def _load_env_file(path: Path) -> None:
@@ -31,11 +42,11 @@ def _load_env_file(path: Path) -> None:
 
 
 def _init_env() -> None:
-    custom = os.environ.get("ACC_MCP_ENV_FILE")
+    custom = _env("ENV_FILE")
     if custom:
         _load_env_file(Path(custom).expanduser())
     _load_env_file(_PACKAGE_ROOT / ".env")
-    _load_env_file(Path.home() / ".acc-mcp" / ".env")
+    _load_env_file(_HOME_DIR / ".env")
 
 
 _init_env()
@@ -62,17 +73,17 @@ AUTH_MODE: str = os.environ.get("ACC_AUTH_MODE", "3lo").lower()
 # headers when no 3-legged login has been performed.
 FALLBACK_USER_ID: str = os.environ.get("ACC_USER_ID", "")
 
-DATA_DIR: Path = Path(os.environ.get("ACC_MCP_DATA_DIR", str(Path.home() / ".acc-mcp"))).expanduser()
+DATA_DIR: Path = Path(_env("DATA_DIR", str(_HOME_DIR))).expanduser()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 TOKEN_FILE: Path = DATA_DIR / "tokens.json"
-DOWNLOAD_DIR: Path = Path(os.environ.get("ACC_MCP_DOWNLOAD_DIR", str(DATA_DIR / "downloads"))).expanduser()
+DOWNLOAD_DIR: Path = Path(_env("DOWNLOAD_DIR", str(DATA_DIR / "downloads"))).expanduser()
 
 # Extra directory with user-supplied naming-convention JSON configs
-NAMING_DIR: Path = Path(os.environ.get("ACC_MCP_NAMING_DIR", str(DATA_DIR / "naming"))).expanduser()
-# Neutral default so the server is project-agnostic. Set ACC_MCP_NAMING_CONFIG
+NAMING_DIR: Path = Path(_env("NAMING_DIR", str(DATA_DIR / "naming"))).expanduser()
+# Neutral default so the server is project-agnostic. Set FORMA_MCP_NAMING_CONFIG
 # (env) to a project-specific config id, or pass config_id per tool call.
-DEFAULT_NAMING_CONFIG: str = os.environ.get("ACC_MCP_NAMING_CONFIG", "iso19650-uk")
+DEFAULT_NAMING_CONFIG: str = _env("NAMING_CONFIG", "iso19650-uk")
 
 # ---------------------------------------------------------------------------
 # Endpoints
@@ -91,6 +102,7 @@ DOCS_V1 = f"{APS_BASE}/bim360/docs/v1"
 REVIEWS_V1 = f"{APS_BASE}/construction/reviews/v1"
 FILES_V1 = f"{APS_BASE}/construction/files/v1"
 OSS_V2 = f"{APS_BASE}/oss/v2"
+CATALOG_V2 = "https://api.aps.autodesk.com/content-catalog/v2"
 
 # ---------------------------------------------------------------------------
 # OAuth scopes

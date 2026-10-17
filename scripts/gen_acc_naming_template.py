@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an ACC "File naming standard" import .xlsx from an acc-mcp naming config.
+"""Generate an ACC "File naming standard" import .xlsx from an forma-mcp naming config.
 
 ACC Docs lets an admin IMPORT a naming standard as an Excel workbook (the
 "Default - ISO 19650" template). The APS API cannot create/edit a naming
@@ -33,8 +33,8 @@ import openpyxl
 _HERE = Path(__file__).resolve().parent
 MASTER = _HERE.parent / "naming_templates" / "Default_ISO_19650_master.xlsx"
 _CONFIG_DIRS = [
-    _HERE.parent / "src" / "acc_mcp" / "naming_configs",  # bundled presets
-    Path.home() / ".acc-mcp" / "naming",                   # user project configs
+    _HERE.parent / "src" / "forma_mcp" / "naming_configs",  # bundled presets
+    Path.home() / ".forma-mcp" / "naming",                   # user project configs
 ]
 
 DELIM_WORD = {"-": "Hyphen", "_": "Underscore", ".": "Period"}

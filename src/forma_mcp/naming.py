@@ -22,7 +22,7 @@ _EXT_RE = re.compile(r"\.[A-Za-z0-9]{1,6}$")
 
 
 def _bundled_dir() -> Any:
-    return resources.files("acc_mcp") / "naming_configs"
+    return resources.files("forma_mcp") / "naming_configs"
 
 
 def list_configs() -> list[dict[str, str]]:
@@ -50,7 +50,7 @@ def list_configs() -> list[dict[str, str]]:
 
 
 def load_config(name_or_path: Optional[str] = None) -> dict[str, Any]:
-    """Load a naming config by id, filename or path. Default: ACC_MCP_NAMING_CONFIG."""
+    """Load a naming config by id, filename or path. Default: FORMA_MCP_NAMING_CONFIG."""
     ref = (name_or_path or config.DEFAULT_NAMING_CONFIG).strip()
     candidates: list[Path] = []
     if ref.endswith(".json"):

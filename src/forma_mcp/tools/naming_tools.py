@@ -23,8 +23,8 @@ async def acc_naming_configs(
     """List the available container-ID naming conventions and the current
     default. Bundled presets: 'iso19650-uk' (generic UK BIM Framework, the
     default). Each project adds its own convention by dropping a JSON file
-    named after the project (e.g. '<project-code>.json') in ~/.acc-mcp/naming,
-    then selecting it via config_id or ACC_MCP_NAMING_CONFIG. With config_id,
+    named after the project (e.g. '<project-code>.json') in ~/.forma-mcp/naming,
+    then selecting it via config_id or FORMA_MCP_NAMING_CONFIG. With config_id,
     returns the full convention: field code tables, status &
     revision codes, classification system and the default CDE folder
     structure."""

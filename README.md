@@ -1,6 +1,8 @@
-# ACC MCP
+# Forma MCP
 
-MCP server that lets Claude manage an ISO 19650 / TCVN 14177 Common Data Environment on Autodesk Construction Cloud — projects, CDE folder trees, permissions, files, document status and naming compliance.
+MCP server that lets Claude manage an ISO 19650 / TCVN 14177 Common Data Environment on Autodesk Construction Cloud — projects, CDE folder trees, permissions, files, document status and naming compliance — and browse and download the company content library in Autodesk Content Catalog.
+
+Formerly `acc-mcp`. An existing `~/.acc-mcp` data folder (login, naming configs) and `ACC_MCP_*` variables are still picked up.
 
 ## Contents
 
@@ -88,10 +90,10 @@ Required for every hub you want to reach, including in 3-legged mode.
 ### 1.3 Clone and install
 
 ```powershell
-git clone https://github.com/nhantruong96/acc-mcp.git
-cd acc-mcp
+git clone https://github.com/nhantruong96/forma-mcp.git
+cd forma-mcp
 uv sync
-uv run python -m acc_mcp --selfcheck
+uv run python -m forma_mcp --selfcheck
 ```
 
 Expected last line: `selfcheck OK`, with `tools registered 45`.
@@ -125,10 +127,10 @@ Fill in `APS_CLIENT_ID` (and `APS_CLIENT_SECRET` if you chose Traditional Web Ap
 | `APS_CALLBACK_URL` | `http://localhost:8087/callback` | Must match the APS app exactly |
 | `APS_REGION` | `US` | `US`, `EMEA`, `AUS`, `CAN`, `DEU`, `GBR`, `IND`, `JPN` |
 | `ACC_AUTH_MODE` | `3lo` | `3lo` / `auto` / `2lo` |
-| `ACC_MCP_NAMING_CONFIG` | `iso19650-uk` | Default naming convention id |
-| `ACC_MCP_NAMING_DIR` | `~/.acc-mcp/naming` | Extra naming-convention JSON files |
-| `ACC_MCP_DATA_DIR` | `~/.acc-mcp` | Token and download storage |
-| `ACC_MCP_ENV_FILE` | (empty) | Alternate `.env` path |
+| `FORMA_MCP_NAMING_CONFIG` | `iso19650-uk` | Default naming convention id |
+| `FORMA_MCP_NAMING_DIR` | `~/.forma-mcp/naming` | Extra naming-convention JSON files |
+| `FORMA_MCP_DATA_DIR` | `~/.forma-mcp` | Token and download storage |
+| `FORMA_MCP_ENV_FILE` | (empty) | Alternate `.env` path |
 | `ACC_USER_ID` | (empty) | 2-legged impersonation only |
 
 Instead of `.env`, you can put the same variables in the `env` block of the Claude Desktop config in Step 2.
@@ -139,21 +141,21 @@ Instead of `.env`, you can put the same variables in the `env` block of the Clau
    - Microsoft Store build: `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json`
    - Classic installer: `%APPDATA%\Claude\claude_desktop_config.json`
    - Or in the app: *Settings → Developer → Edit Config*.
-2. Add the `acc` block inside `mcpServers`, keeping any other servers:
+2. Add the `forma` block inside `mcpServers`, keeping any other servers:
 
 ```json
 {
   "mcpServers": {
-    "acc": {
-      "command": "C:\\path\\to\\acc-mcp\\.venv\\Scripts\\python.exe",
-      "args": ["-m", "acc_mcp"],
+    "forma": {
+      "command": "C:\\path\\to\\forma-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "forma_mcp"],
       "env": {
         "APS_CLIENT_ID": "PASTE_CLIENT_ID_HERE",
         "APS_CLIENT_SECRET": "PASTE_SECRET_OR_LEAVE_EMPTY",
         "APS_CALLBACK_URL": "http://localhost:8087/callback",
         "APS_REGION": "US",
         "ACC_AUTH_MODE": "3lo",
-        "ACC_MCP_NAMING_CONFIG": "iso19650-uk"
+        "FORMA_MCP_NAMING_CONFIG": "iso19650-uk"
       }
     }
   }
@@ -206,34 +208,34 @@ Then in ACC Docs → *Settings* → **File naming standard** → **Import** → 
 3. Add:
 
 ```toml
-[mcp_servers.acc]
-command = "C:\\path\\to\\acc-mcp\\.venv\\Scripts\\python.exe"
-args = ["-m", "acc_mcp"]
+[mcp_servers.forma]
+command = "C:\\path\\to\\forma-mcp\\.venv\\Scripts\\python.exe"
+args = ["-m", "forma_mcp"]
 
-[mcp_servers.acc.env]
+[mcp_servers.forma.env]
 APS_CLIENT_ID = "PASTE_CLIENT_ID_HERE"
 APS_CLIENT_SECRET = "PASTE_SECRET_OR_LEAVE_EMPTY"
 APS_CALLBACK_URL = "http://localhost:8087/callback"
 APS_REGION = "US"
 ACC_AUTH_MODE = "3lo"
-ACC_MCP_NAMING_CONFIG = "iso19650-uk"
+FORMA_MCP_NAMING_CONFIG = "iso19650-uk"
 ```
 
 4. Restart the Codex CLI.
-5. Run `/mcp` in Codex to confirm `acc` is listed.
+5. Run `/mcp` in Codex to confirm `forma` is listed.
 
 ## Testing with a standalone client
 
 ```powershell
-uv run python -m acc_mcp --selfcheck
-uv run acc-mcp --version
-uv run acc-mcp --list-tools
-npx @modelcontextprotocol/inspector uv run acc-mcp
+uv run python -m forma_mcp --selfcheck
+uv run forma-mcp --version
+uv run forma-mcp --list-tools
+npx @modelcontextprotocol/inspector uv run forma-mcp
 ```
 
 ## Adding a new tool
 
-1. Open the matching module in `src/acc_mcp/tools/` (or create one).
+1. Open the matching module in `src/forma_mcp/tools/` (or create one).
 2. Define the function and decorate it:
 
 ```python
@@ -246,13 +248,13 @@ async def acc_my_tool(project_id: str) -> dict:
     return await api_get(f"/project/v1/projects/{project_id}")
 ```
 
-3. If you created a new module, add it to `src/acc_mcp/tools/__init__.py`.
+3. If you created a new module, add it to `src/forma_mcp/tools/__init__.py`.
 4. Never use `print()` — stdout is the JSON-RPC channel.
 5. Verify:
 
 ```powershell
-uv run python -m acc_mcp --selfcheck
-uv run acc-mcp --list-tools
+uv run python -m forma_mcp --selfcheck
+uv run forma-mcp --list-tools
 ```
 
 6. Fully quit and reopen Claude Desktop.
@@ -270,8 +272,11 @@ uv run acc-mcp --list-tools
 | Status & metadata | `acc_list_custom_attributes`, `acc_create_custom_attribute`, `acc_get_docs_metadata`, `acc_set_custom_attributes`, `acc_get_naming_standard` |
 | ISO 19650 naming | `acc_naming_configs`, `acc_validate_names`, `acc_compose_name`, `acc_audit_folder_naming`, `acc_cde_structure_template` |
 | Reviews | `acc_list_review_workflows`, `acc_list_reviews`, `acc_get_review`, `acc_create_review` |
+| Content Catalog | `catalog_get_hub`, `catalog_list_collections`, `catalog_search_content`, `catalog_get_content`, `catalog_download_content` |
 
-Add a project-specific naming convention: copy `src/acc_mcp/naming_configs/iso19650-uk.json` to `%USERPROFILE%\.acc-mcp\naming\[project-code].json`, edit the code tables, then pass `config_id="[project-code]"` or set `ACC_MCP_NAMING_CONFIG`.
+Content Catalog tools need a 3-legged login and the hub id from `acc_list_hubs`. They only read and download; the catalog's update and delete endpoints are not exposed.
+
+Add a project-specific naming convention: copy `src/forma_mcp/naming_configs/iso19650-uk.json` to `%USERPROFILE%\.forma-mcp\naming\[project-code].json`, edit the code tables, then pass `config_id="[project-code]"` or set `FORMA_MCP_NAMING_CONFIG`.
 
 ## Troubleshooting
 
@@ -294,9 +299,9 @@ Add a project-specific naming convention: copy `src/acc_mcp/naming_configs/iso19
 ## Repository layout
 
 ```
-src/acc_mcp/
+src/forma_mcp/
   server.py          entry point (--version, --selfcheck, --list-tools)
-  __main__.py        python -m acc_mcp
+  __main__.py        python -m forma_mcp
   app.py             FastMCP instance
   config.py          environment variables, endpoints, scopes
   auth.py            3-legged OAuth + PKCE, token storage
@@ -304,7 +309,7 @@ src/acc_mcp/
   ids.py             'b.' prefix handling
   naming.py          ISO 19650 name validation / composition
   naming_configs/    bundled naming conventions (iso19650-uk.json)
-  tools/             the 45 MCP tools, grouped by area
+  tools/             the 51 MCP tools, grouped by area
 scripts/
   install.ps1                  uv sync + selfcheck
   gen_acc_naming_template.py   naming config JSON -> ACC import .xlsx
