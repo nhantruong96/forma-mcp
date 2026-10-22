@@ -374,13 +374,35 @@ async def acc_copy_file(
     ACC review workflow. (ACC cannot move items via API; copy then delete the
     original in the UI if a move is required.)"""
     try:
+        src = await request(
+            "GET",
+            f"{config.DATA_V1}/projects/{with_b(project_id)}/versions/{enc(version_id)}",
+            impersonate_header="x-user-id",
+        )
+        src_data = src.get("data") or {}
+        src_attrs = src_data.get("attributes") or {}
         if not new_name:
-            payload = await request(
-                "GET",
-                f"{config.DATA_V1}/projects/{with_b(project_id)}/versions/{enc(version_id)}",
-                impersonate_header="x-user-id",
-            )
-            new_name = ((payload.get("data") or {}).get("attributes") or {}).get("displayName") or "copy"
+            new_name = src_attrs.get("displayName") or src_attrs.get("name") or "copy"
+
+        # ACC rejects the copy if the new item/version type differs from the
+        # source ("Not permitted to alter type of copied item"). Revit cloud
+        # models are C4RModel, plain documents are File - so mirror the source.
+        src_ext = src_attrs.get("extension") or {}
+        version_ext_type = src_ext.get("type") or "versions:autodesk.bim360:File"
+        ext_version = src_ext.get("version") or "1.0"
+        item_ext_type = version_ext_type.replace("versions:", "items:", 1)
+        src_item_id = (((src_data.get("relationships") or {}).get("item") or {}).get("data") or {}).get("id")
+        if src_item_id:
+            try:
+                itm = await request(
+                    "GET",
+                    f"{config.DATA_V1}/projects/{with_b(project_id)}/items/{enc(src_item_id)}",
+                    impersonate_header="x-user-id",
+                )
+                itm_ext = (((itm.get("data") or {}).get("attributes") or {}).get("extension") or {})
+                item_ext_type = itm_ext.get("type") or item_ext_type
+            except Exception:
+                pass
         payload = await request(
             "POST",
             f"{config.DATA_V1}/projects/{with_b(project_id)}/items",
@@ -391,12 +413,26 @@ async def acc_copy_file(
                     "type": "items",
                     "attributes": {
                         "displayName": new_name,
-                        "extension": {"type": "items:autodesk.bim360:File", "version": "1.0"},
+                        "extension": {"type": item_ext_type, "version": ext_version},
                     },
                     "relationships": {
-                        "parent": {"data": {"type": "folders", "id": target_folder_id}}
+                        "tip": {"data": {"type": "versions", "id": "1"}},
+                        "parent": {"data": {"type": "folders", "id": target_folder_id}},
                     },
                 },
+                "included": [
+                    {
+                        "type": "versions",
+                        "id": "1",
+                        "attributes": {
+                            "name": new_name,
+                            "extension": {
+                                "type": version_ext_type,
+                                "version": ext_version,
+                            },
+                        },
+                    }
+                ],
             },
             content_type="application/vnd.api+json",
             impersonate_header="x-user-id",
